@@ -28,7 +28,9 @@ function normLabel(v) {
  *
  * V 표시 열부터 오른쪽으로 국가 코드가 비어 있을 때까지를 국가별 카피로 인식한다.
  */
-function parseGrid(grid) {
+function parseGrid(grid, rowNumbers) {
+  // rowNumbers[i] = grid i번째 행의 실제 엑셀 행 번호 (숨긴 행을 뺀 경우 주소 표시용)
+  const rowNo = (r) => (rowNumbers ? rowNumbers[r] : r + 1);
   const at = (r, c) => (grid[r] && grid[r][c] != null ? String(grid[r][c]).replace(/\r\n?/g, '\n').trim() : '');
   const rowCount = grid.length;
   const colCount = Math.max(0, ...grid.map((r) => r.length));
@@ -46,7 +48,7 @@ function parseGrid(grid) {
   if (!marker) {
     throw new Error('"V" 표시를 찾을 수 없습니다. 시작 국가(예: CA) 열 바로 위 셀에 V를 입력해 주세요.');
   }
-  const markerAddr = `${colName(marker.col + 1)}${marker.row + 1}`;
+  const markerAddr = `${colName(marker.col + 1)}${rowNo(marker.row)}`;
 
   // 국가 코드 행: 마커 아래에서 처음으로 값이 있는 행
   let countryRow = null;
@@ -106,8 +108,19 @@ function parseGrid(grid) {
  * @param {string} [fileName] 원본 파일명 (확장자 판별용)
  */
 async function parseWorkbook(buffer, fileName) {
-  const { grid, sheet, method } = await loadGrid(buffer, fileName);
-  return { sheet, method, ...parseGrid(grid) };
+  const { grid, hiddenRows = [], sheet, method } = await loadGrid(buffer, fileName);
+
+  // 숨기기된 행은 없는 것으로 보고 제외한 뒤 파싱
+  const hidden = new Set(hiddenRows);
+  const visible = [];
+  const rowNumbers = [];
+  grid.forEach((row, i) => {
+    if (hidden.has(i)) return;
+    visible.push(row);
+    rowNumbers.push(i + 1);
+  });
+
+  return { sheet, method, hiddenRowCount: hidden.size, ...parseGrid(visible, rowNumbers) };
 }
 
 function colName(n) {

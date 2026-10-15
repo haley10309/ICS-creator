@@ -79,7 +79,7 @@ export default function App() {
       const res = await fetch('/api/parse', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.errorMsg || '파싱 실패');
-      setMeta({ sheet: data.sheet, marker: data.marker, method: data.method });
+      setMeta({ sheet: data.sheet, marker: data.marker, method: data.method, hiddenRowCount: data.hiddenRowCount });
       setRows(data.countries.map((c) => ({ ...c, checked: true })));
     } catch (e) {
       setRows([]);
@@ -172,6 +172,7 @@ export default function App() {
           <p className="ok">
             시트 <b>{meta.sheet}</b>, V 표시 <b>{meta.marker}</b> 기준 {rows.length}개 국가 인식
             {meta.method === 'excel-com' && ' · DRM(NASCA) 파일 — Excel로 열어 읽음'}
+            {meta.hiddenRowCount > 0 && ` · 숨긴 행 ${meta.hiddenRowCount}개 제외`}
           </p>
         )}
       </section>

@@ -67,14 +67,16 @@ async function loadWithExcelJS(buffer) {
   const rowCount = Math.min(sheet.rowCount, MAX_ROWS);
   const colCount = sheet.columnCount;
   const grid = [];
+  const hiddenRows = [];
   // 병합 셀의 하위 셀은 exceljs가 좌상단(master) 값을 그대로 돌려주므로 별도 채우기 불필요
   for (let r = 1; r <= rowCount; r++) {
     const row = sheet.getRow(r);
+    if (row.hidden) hiddenRows.push(r - 1); // 숨기기된 행 (필터로 숨겨진 행 포함)
     const out = new Array(colCount);
     for (let c = 1; c <= colCount; c++) out[c - 1] = cellText(row.getCell(c));
     grid.push(out);
   }
-  return { grid, sheet: sheet.name };
+  return { grid, hiddenRows, sheet: sheet.name };
 }
 
 /* ------------------------------------------------------------------ */
@@ -187,6 +189,15 @@ try {
       }
     }
   }
+  # 숨기기된 행 (필터로 숨겨진 행 포함). 숨긴 행이 하나도 없으면 행별 조회를 생략
+  $hidden = New-Object System.Collections.Generic.List[int]
+  $allHidden = $sht.Range("A1:A$lastRow").EntireRow.Hidden
+  if ($allHidden -ne $false) {
+    Log 'STEP:checking hidden rows'
+    for ($r = 1; $r -le $lastRow; $r++) {
+      if ($sht.Rows.Item($r).Hidden -eq $true) { $hidden.Add($r - 1) }
+    }
+  }
   Log 'STEP:grid read complete'
 
   $sb = New-Object System.Text.StringBuilder
@@ -200,7 +211,7 @@ try {
     }
     [void]$sb.Append(']')
   }
-  [void]$sb.Append(']}')
+  [void]$sb.Append('],"hiddenRows":[').Append(($hidden -join ',')).Append(']}')
   [System.IO.File]::WriteAllText($OutPath, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
   $exitCode = 0
 }
@@ -302,7 +313,7 @@ async function loadWithExcelCom(buffer, fileName) {
 
     const json = JSON.parse(await fs.promises.readFile(outPath, 'utf8'));
     if (!json.grid || json.grid.length === 0) throw new Error('시트에 데이터가 없습니다.');
-    return { grid: json.grid, sheet: json.sheet };
+    return { grid: json.grid, hiddenRows: json.hiddenRows || [], sheet: json.sheet };
   } finally {
     fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
@@ -311,7 +322,8 @@ async function loadWithExcelCom(buffer, fileName) {
 /* ------------------------------------------------------------------ */
 
 /**
- * @returns {Promise<{grid: string[][], sheet: string, method: 'exceljs'|'excel-com'}>}
+ * @returns {Promise<{grid: string[][], hiddenRows: number[], sheet: string, method: 'exceljs'|'excel-com'}>}
+ * hiddenRows: 숨기기된 행 번호 (0-based)
  */
 async function loadGrid(buffer, fileName) {
   const ext = path.extname(fileName || '').toLowerCase();

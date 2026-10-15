@@ -104,3 +104,32 @@ test('DRM(비 OOXML) 파일: exceljs 실패 → Excel 자동화로 폴백 (Windo
   if (process.platform === 'win32') return;
   await assert.rejects(parseWorkbook(drmLike, 'copy.xlsx'), /Windows에서만 지원/);
 });
+
+test('숨기기된 행은 무시', async () => {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Sheet1');
+  const rows = [
+    ['', '', 'V'],
+    ['', '', 'CA'],
+    ['', 'memo', '숨긴 메모 행'], // 숨김: 국가 코드 바로 아래 → 숨기지 않으면 언어로 잘못 읽힘
+    ['', '', 'English'],
+    ['', 'Summary', 'OLD 제목'], // 숨김: 예전 카피
+    ['', 'Summary', 'Galaxy Event'],
+    ['', 'Description', 'Live on Samsung.com'],
+    ['', 'URL', 'www.samsung.com/ca'],
+  ];
+  rows.forEach((r, i) => r.forEach((v, c) => v && (ws.getCell(i + 1, c + 1).value = v)));
+  ws.getRow(3).hidden = true;
+  ws.getRow(5).hidden = true;
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ics-')), 'hidden.xlsx');
+  await wb.xlsx.writeFile(file);
+
+  const r = await parseWorkbook(fs.readFileSync(file), 'hidden.xlsx');
+  assert.strictEqual(r.hiddenRowCount, 2);
+  assert.strictEqual(r.marker, 'C1');
+  assert.deepStrictEqual(
+    r.countries.map((c) => [c.code, c.language, c.summary, c.description, c.url]),
+    [['CA', 'English', 'Galaxy Event', 'Live on Samsung.com', 'www.samsung.com/ca']]
+  );
+});
