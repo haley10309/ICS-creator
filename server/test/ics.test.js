@@ -75,3 +75,32 @@ test('엑셀 파싱 → ICS: 로컬어(RTL 포함) 완전 보존', async () => {
     assert.strictEqual(get('DESCRIPTION'), desc.trim());
   });
 });
+
+test('parseGrid: 병합으로 채워진 라벨, A1 기준 오프셋 grid', () => {
+  const { parseGrid } = require('../src/excel');
+  const grid = [
+    ['', '', '', ''],
+    ['', '', 'V', ''],
+    ['', '', 'CA', 'SA'],
+    ['', '', 'English', 'Arabic'],
+    ['Copy', 'Summary', 'Galaxy Event', 'حدث جالكسي'],
+    ['Copy', 'Description', 'Aug. 27\nLive', 'مباشر'],
+    ['Copy', 'URL', 'www.samsung.com/ca', 'www.samsung.com/sa'],
+  ];
+  const r = parseGrid(grid);
+  assert.strictEqual(r.marker, 'C2');
+  assert.deepStrictEqual(
+    r.countries.map((c) => [c.code, c.language, c.summary, c.description, c.url]),
+    [
+      ['CA', 'English', 'Galaxy Event', 'Aug. 27\nLive', 'www.samsung.com/ca'],
+      ['SA', 'Arabic', 'حدث جالكسي', 'مباشر', 'www.samsung.com/sa'],
+    ]
+  );
+});
+
+test('DRM(비 OOXML) 파일: exceljs 실패 → Excel 자동화로 폴백 (Windows 외에서는 안내 오류)', async () => {
+  // NASCA 보호 파일은 zip 구조가 아니므로 exceljs가 실패한다
+  const drmLike = Buffer.from('<## NASCA DRM FILE - VER1.00 ##>' + '\0'.repeat(64));
+  if (process.platform === 'win32') return;
+  await assert.rejects(parseWorkbook(drmLike, 'copy.xlsx'), /Windows에서만 지원/);
+});

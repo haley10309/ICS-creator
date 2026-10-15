@@ -1,6 +1,6 @@
 'use strict';
 
-const ExcelJS = require('exceljs');
+const { loadGrid } = require('./loader');
 
 /** 시작 열 표시로 인식할 값 */
 const MARKERS = new Set(['v', '✓', '✔', '√', '☑']);
@@ -17,45 +17,9 @@ function normLabel(v) {
 }
 
 /**
- * exceljs 셀 값을 문자열로 변환.
- * 리치텍스트/하이퍼링크/수식 결과를 모두 지원하며, 텍스트 자체(RTL 포함)는 변형하지 않는다.
- */
-function cellText(cell) {
-  if (!cell) return '';
-  let v = cell.value;
-  if (v === null || v === undefined) return '';
-
-  if (typeof v === 'object') {
-    if (v instanceof Date) return v.toISOString();
-    if (Array.isArray(v.richText)) return v.richText.map((r) => r.text ?? '').join('');
-    if ('formula' in v || 'sharedFormula' in v) v = v.result ?? '';
-    else if ('text' in v) {
-      const t = v.text;
-      v = typeof t === 'object' && t && Array.isArray(t.richText) ? t.richText.map((r) => r.text ?? '').join('') : t;
-    } else if ('error' in v) return '';
-    if (v && typeof v === 'object') {
-      if (Array.isArray(v.richText)) return v.richText.map((r) => r.text ?? '').join('');
-      return '';
-    }
-  }
-
-  // 셀 내부 줄바꿈 정규화 (\r\n, \r → \n), 앞뒤 공백만 제거
-  return String(v ?? '').replace(/\r\n?/g, '\n').trim();
-}
-
-function findMarker(sheet) {
-  let found = null;
-  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    if (found) return;
-    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      if (found) return;
-      if (MARKERS.has(normLabel(cellText(cell)))) found = { row: rowNumber, col: colNumber };
-    });
-  });
-  return found;
-}
-
-/**
+ * grid: 시트 전체를 문자열 2차원 배열로 읽은 것 (grid[행][열], 0-based).
+ * 병합 셀은 병합 영역 전체에 좌상단 값이 채워져 있다고 가정한다.
+ *
  * 시트 구조:
  *   - 시작 국가 열(예: CA) 바로 위 셀에 "V" 표시
  *   - V 아래 행: 국가 코드 (CA, LATIN_EN, SG, ... , CA_FR, MX)
@@ -64,33 +28,48 @@ function findMarker(sheet) {
  *
  * V 표시 열부터 오른쪽으로 국가 코드가 비어 있을 때까지를 국가별 카피로 인식한다.
  */
-function parseSheet(sheet) {
-  const marker = findMarker(sheet);
-  if (!marker) return null;
+function parseGrid(grid) {
+  const at = (r, c) => (grid[r] && grid[r][c] != null ? String(grid[r][c]).replace(/\r\n?/g, '\n').trim() : '');
+  const rowCount = grid.length;
+  const colCount = Math.max(0, ...grid.map((r) => r.length));
+
+  // V 표시 찾기
+  let marker = null;
+  for (let r = 0; r < rowCount && !marker; r++) {
+    for (let c = 0; c < colCount; c++) {
+      if (MARKERS.has(normLabel(at(r, c)))) {
+        marker = { row: r, col: c };
+        break;
+      }
+    }
+  }
+  if (!marker) {
+    throw new Error('"V" 표시를 찾을 수 없습니다. 시작 국가(예: CA) 열 바로 위 셀에 V를 입력해 주세요.');
+  }
+  const markerAddr = `${colName(marker.col + 1)}${marker.row + 1}`;
 
   // 국가 코드 행: 마커 아래에서 처음으로 값이 있는 행
   let countryRow = null;
-  for (let r = marker.row + 1; r <= Math.min(sheet.rowCount, marker.row + 10); r++) {
-    if (cellText(sheet.getRow(r).getCell(marker.col))) {
+  for (let r = marker.row + 1; r < Math.min(rowCount, marker.row + 11); r++) {
+    if (at(r, marker.col)) {
       countryRow = r;
       break;
     }
   }
-  if (!countryRow) throw new Error(`"V" 표시(${sheet.name}!${colName(marker.col)}${marker.row}) 아래에 국가 코드가 없습니다.`);
+  if (countryRow === null) throw new Error(`"V" 표시(${markerAddr}) 아래에 국가 코드가 없습니다.`);
 
-  // 필드 라벨 행 찾기
+  // 필드 라벨 행 찾기 (V 열보다 왼쪽)
   const fieldRows = {};
-  for (let r = countryRow + 1; r <= sheet.rowCount; r++) {
-    const row = sheet.getRow(r);
-    for (let c = 1; c < marker.col; c++) {
-      const label = normLabel(cellText(row.getCell(c)));
+  for (let r = countryRow + 1; r < rowCount; r++) {
+    for (let c = 0; c < marker.col; c++) {
+      const label = normLabel(at(r, c));
       if (!label) continue;
       for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
-        if (!fieldRows[field] && aliases.includes(label)) fieldRows[field] = r;
+        if (fieldRows[field] === undefined && aliases.includes(label)) fieldRows[field] = r;
       }
     }
   }
-  if (!fieldRows.summary) {
+  if (fieldRows.summary === undefined) {
     throw new Error('"Summary" 라벨 행을 찾을 수 없습니다. 국가 열 왼쪽에 Summary / Description / URL 라벨이 있어야 합니다.');
   }
 
@@ -99,19 +78,18 @@ function parseSheet(sheet) {
 
   const countries = [];
   const seen = new Map();
-  const lastCol = Math.max(sheet.columnCount, marker.col);
-  for (let c = marker.col; c <= lastCol; c++) {
-    const code = cellText(sheet.getRow(countryRow).getCell(c));
+  for (let c = marker.col; c < colCount; c++) {
+    const code = at(countryRow, c);
     if (!code) break;
 
-    const get = (r) => (r ? cellText(sheet.getRow(r).getCell(c)) : '');
+    const get = (r) => (r === null || r === undefined ? '' : at(r, c));
     const count = (seen.get(code) || 0) + 1;
     seen.set(code, count);
 
     countries.push({
       id: count > 1 ? `${code}_${count}` : code,
       code,
-      column: colName(c),
+      column: colName(c + 1),
       language: get(langRow),
       summary: get(fieldRows.summary),
       description: get(fieldRows.description),
@@ -119,26 +97,17 @@ function parseSheet(sheet) {
     });
   }
 
-  return {
-    sheet: sheet.name,
-    marker: `${colName(marker.col)}${marker.row}`,
-    countries,
-  };
+  return { marker: markerAddr, countries };
 }
 
-async function parseWorkbook(buffer) {
-  const wb = new ExcelJS.Workbook();
-  try {
-    await wb.xlsx.load(buffer);
-  } catch (e) {
-    throw new Error('엑셀(.xlsx) 파일을 읽을 수 없습니다. .xlsx 형식인지 확인해 주세요.');
-  }
-
-  for (const sheet of wb.worksheets) {
-    const result = parseSheet(sheet);
-    if (result) return result;
-  }
-  throw new Error('"V" 표시를 찾을 수 없습니다. 시작 국가(예: CA) 열 바로 위 셀에 V를 입력해 주세요.');
+/**
+ * 엑셀 파일 → 국가별 카피
+ * @param {Buffer} buffer
+ * @param {string} [fileName] 원본 파일명 (확장자 판별용)
+ */
+async function parseWorkbook(buffer, fileName) {
+  const { grid, sheet, method } = await loadGrid(buffer, fileName);
+  return { sheet, method, ...parseGrid(grid) };
 }
 
 function colName(n) {
@@ -151,4 +120,4 @@ function colName(n) {
   return s;
 }
 
-module.exports = { parseWorkbook, parseSheet, cellText };
+module.exports = { parseWorkbook, parseGrid };

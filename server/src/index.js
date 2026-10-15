@@ -22,11 +22,11 @@ app.use(express.json({ limit: '10mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-/** 엑셀 업로드 → 국가별 카피 목록 */
+/** 엑셀 업로드 → 국가별 카피 목록 (일반 파일: exceljs, NASCA DRM 파일: Windows Excel 자동화) */
 app.post('/api/parse', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ errorMsg: '파일이 없습니다.' });
-    const result = await parseWorkbook(req.file.buffer);
+    const result = await parseWorkbook(req.file.buffer, req.file.originalname);
     res.json(result);
   } catch (e) {
     res.status(400).json({ errorMsg: e.message });

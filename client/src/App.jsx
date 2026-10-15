@@ -79,7 +79,7 @@ export default function App() {
       const res = await fetch('/api/parse', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.errorMsg || '파싱 실패');
-      setMeta({ sheet: data.sheet, marker: data.marker });
+      setMeta({ sheet: data.sheet, marker: data.marker, method: data.method });
       setRows(data.countries.map((c) => ({ ...c, checked: true })));
     } catch (e) {
       setRows([]);
@@ -151,14 +151,18 @@ export default function App() {
           <input
             ref={fileInput}
             type="file"
-            accept=".xlsx"
+            accept=".xlsx,.xlsm,.xls"
             hidden
             onChange={(e) => {
               handleFile(e.target.files[0]);
               e.target.value = '';
             }}
           />
-          {loading ? '읽는 중…' : fileName ? `📄 ${fileName}` : '.xlsx 파일을 끌어다 놓거나 클릭해서 선택'}
+          {loading
+            ? '읽는 중… (NASCA 보호 파일은 Excel로 여는 데 시간이 걸릴 수 있습니다)'
+            : fileName
+              ? `📄 ${fileName}`
+              : '엑셀 파일(.xlsx)을 끌어다 놓거나 클릭해서 선택'}
         </div>
         <p className="hint">
           시작 국가(예: CA) 열 바로 위 셀에 <b>V</b> 표시가 있으면 그 열부터 오른쪽 국가들을 국가별 카피로 인식합니다.
@@ -167,6 +171,7 @@ export default function App() {
         {meta && (
           <p className="ok">
             시트 <b>{meta.sheet}</b>, V 표시 <b>{meta.marker}</b> 기준 {rows.length}개 국가 인식
+            {meta.method === 'excel-com' && ' · DRM(NASCA) 파일 — Excel로 열어 읽음'}
           </p>
         )}
       </section>
