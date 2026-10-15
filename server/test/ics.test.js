@@ -120,12 +120,20 @@ test('숨기기된 행은 무시', async () => {
     ['', 'URL', 'www.samsung.com/ca'],
   ];
   rows.forEach((r, i) => r.forEach((v, c) => v && (ws.getCell(i + 1, c + 1).value = v)));
-  ws.getRow(3).hidden = true;
-  ws.getRow(5).hidden = true;
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ics-')), 'hidden.xlsx');
-  await wb.xlsx.writeFile(file);
+  ws.getRow(3).hidden = true; // hidden="1"
 
-  const r = await parseWorkbook(fs.readFileSync(file), 'hidden.xlsx');
+  // 5행은 hidden 속성 없이 높이 0(ht="0")으로만 숨김 처리된 경우
+  const JSZip = require('jszip');
+  const zip = await JSZip.loadAsync(await wb.xlsx.writeBuffer());
+  const sheetPath = 'xl/worksheets/sheet1.xml';
+  let xml = await zip.file(sheetPath).async('string');
+  xml = xml.replace(/<row r="5"([^>]*)>/, (m, attrs) => `<row r="5"${attrs.replace(/\s(ht|customHeight|hidden)="[^"]*"/g, '')} ht="0" customHeight="1">`);
+  assert.match(xml, /<row r="5"[^>]*ht="0"/);
+  zip.file(sheetPath, xml);
+  const buf = await zip.generateAsync({ type: 'nodebuffer' });
+
+  const r = await parseWorkbook(buf, 'hidden.xlsx');
+  assert.deepStrictEqual(r.hiddenRows, [3, 5]);
   assert.strictEqual(r.hiddenRowCount, 2);
   assert.strictEqual(r.marker, 'C1');
   assert.deepStrictEqual(

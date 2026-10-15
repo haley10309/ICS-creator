@@ -120,7 +120,15 @@ async function parseWorkbook(buffer, fileName) {
     rowNumbers.push(i + 1);
   });
 
-  return { sheet, method, hiddenRowCount: hidden.size, ...parseGrid(visible, rowNumbers) };
+  console.log(`[excel] ${method}: 숨긴 행 ${hidden.size}개 제외 ${hidden.size ? `(${[...hidden].map((i) => i + 1).join(', ')})` : ''}`);
+
+  return {
+    sheet,
+    method,
+    hiddenRowCount: hidden.size,
+    hiddenRows: [...hidden].map((i) => i + 1),
+    ...parseGrid(visible, rowNumbers),
+  };
 }
 
 function colName(n) {

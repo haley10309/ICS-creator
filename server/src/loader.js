@@ -22,6 +22,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
 const ExcelJS = require('exceljs');
+const JSZip = require('jszip');
 
 const MAX_ROWS = 3000; // 안전장치: 비정상적으로 큰 파일 방지
 const OPEN_RETRIES = 3; // NASCA 복호화 지연 대응 재시도 횟수
@@ -58,6 +59,38 @@ function cellText(cell) {
   return String(v ?? '').replace(/\r\n?/g, '\n').trim();
 }
 
+/**
+ * 첫 번째 시트 XML에서 숨긴 행 번호(1-based)를 직접 읽는다.
+ * exceljs는 높이 0(ht="0")을 "높이 없음"으로 버리기 때문에 원본 XML을 함께 확인한다.
+ */
+async function hiddenRowsFromXml(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const workbookXml = await zip.file('xl/workbook.xml')?.async('string');
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
+  if (!workbookXml || !relsXml) return [];
+
+  const sheetTag = workbookXml.match(/<(?:\w+:)?sheet\b[^>]*>/);
+  const rid = sheetTag && sheetTag[0].match(/\br:id="([^"]+)"/);
+  if (!rid) return [];
+  const rel = [...relsXml.matchAll(/<Relationship\b[^>]*>/g)].map((m) => m[0]).find((t) => t.includes(`Id="${rid[1]}"`));
+  const target = rel && rel.match(/Target="([^"]+)"/);
+  if (!target) return [];
+  const sheetPath = target[1].startsWith('/') ? target[1].slice(1) : path.posix.join('xl', target[1]);
+  const sheetXml = await zip.file(sheetPath)?.async('string');
+  if (!sheetXml) return [];
+
+  const rows = [];
+  for (const m of sheetXml.matchAll(/<(?:\w+:)?row\b([^>]*)>/g)) {
+    const attrs = m[1];
+    const r = attrs.match(/\br="(\d+)"/);
+    if (!r) continue;
+    const hidden = attrs.match(/\bhidden="([^"]*)"/);
+    const ht = attrs.match(/\bht="([^"]*)"/);
+    if ((hidden && /^(1|true)$/i.test(hidden[1])) || (ht && parseFloat(ht[1]) === 0)) rows.push(Number(r[1]));
+  }
+  return rows;
+}
+
 async function loadWithExcelJS(buffer) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
@@ -71,11 +104,19 @@ async function loadWithExcelJS(buffer) {
   // 병합 셀의 하위 셀은 exceljs가 좌상단(master) 값을 그대로 돌려주므로 별도 채우기 불필요
   for (let r = 1; r <= rowCount; r++) {
     const row = sheet.getRow(r);
-    if (row.hidden) hiddenRows.push(r - 1); // 숨기기된 행 (필터로 숨겨진 행 포함)
+    // 숨기기된 행 (필터/그룹 접기로 숨겨진 행, 높이 0인 행 포함)
+    if (row.hidden || row.height === 0) hiddenRows.push(r - 1);
     const out = new Array(colCount);
     for (let c = 1; c <= colCount; c++) out[c - 1] = cellText(row.getCell(c));
     grid.push(out);
   }
+  // exceljs가 놓치는 경우(높이 0 등)를 위해 원본 XML 기준 숨김 행도 합친다
+  try {
+    for (const r of await hiddenRowsFromXml(buffer)) if (r <= rowCount && !hiddenRows.includes(r - 1)) hiddenRows.push(r - 1);
+  } catch (e) {
+    log(`STEP:시트 XML 숨김 행 확인 실패 - ${e.message}`);
+  }
+  hiddenRows.sort((a, b) => a - b);
   return { grid, hiddenRows, sheet: sheet.name };
 }
 
@@ -189,15 +230,17 @@ try {
       }
     }
   }
-  # 숨기기된 행 (필터로 숨겨진 행 포함). 숨긴 행이 하나도 없으면 행별 조회를 생략
+  # 숨기기된 행 (필터/그룹 접기로 숨겨진 행, 높이 0인 행 포함) — 행마다 직접 확인
+  Log 'STEP:checking hidden rows'
   $hidden = New-Object System.Collections.Generic.List[int]
-  $allHidden = $sht.Range("A1:A$lastRow").EntireRow.Hidden
-  if ($allHidden -ne $false) {
-    Log 'STEP:checking hidden rows'
-    for ($r = 1; $r -le $lastRow; $r++) {
-      if ($sht.Rows.Item($r).Hidden -eq $true) { $hidden.Add($r - 1) }
-    }
+  for ($r = 1; $r -le $lastRow; $r++) {
+    $xr = $sht.Rows.Item($r)
+    $isHidden = $false
+    try { if ([bool]$xr.Hidden) { $isHidden = $true } } catch {}
+    if (-not $isHidden) { try { if ([double]$xr.RowHeight -eq 0) { $isHidden = $true } } catch {} }
+    if ($isHidden) { $hidden.Add($r - 1) }
   }
+  Log "HIDDEN_ROWS:$(($hidden | ForEach-Object { $_ + 1 }) -join ',')"
   Log 'STEP:grid read complete'
 
   $sb = New-Object System.Text.StringBuilder
