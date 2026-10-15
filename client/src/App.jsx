@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   TIME_ZONES,
   zonedToUtc,
@@ -64,7 +64,8 @@ export default function App() {
   const [alarmMinutes, setAlarmMinutes] = useState(DEFAULT_ALARM);
   const [prefix, setPrefix] = useState('');
 
-  const [preview, setPreview] = useState(null);
+  // 미리보기: 클릭한 국가 행 바로 아래에 표시 (한 번에 하나)
+  const [preview, setPreview] = useState(null); // { id, content, error }
 
   const time = parseTimeInput(timeText);
   const timeInvalid = timeText.trim() !== '' && !time;
@@ -130,15 +131,42 @@ export default function App() {
     return true;
   }
 
-  async function onPreview(row) {
-    if (!guard()) return;
-    try {
-      const { content } = await apiJson('/api/preview', { ...settings(), event: toEvent(row) });
-      setPreview({ id: row.id, content });
-    } catch (e) {
-      setError(e.message);
-    }
+  function onPreview(row) {
+    // 같은 행을 다시 누르면 닫기
+    setPreview((prev) => (prev?.id === row.id ? null : { id: row.id, content: '', error: '' }));
   }
+
+  // 열려 있는 미리보기는 해당 행의 카피나 일정/알림 설정이 바뀌면 자동으로 다시 생성
+  const previewRow = preview ? rows.find((r) => r.id === preview.id) : null;
+  const previewKey = previewRow
+    ? JSON.stringify([toEvent(previewRow), dtstart?.toISOString(), alarmOn, alarmMinutes, timeInvalid])
+    : null;
+  useEffect(() => {
+    if (!previewRow) return;
+    const id = previewRow.id;
+    if (!dtstart) {
+      setPreview({
+        id,
+        content: '',
+        error: timeInvalid ? '시작 시간 형식을 확인해 주세요.' : '위 "2. 일정 설정"에서 시작 날짜/시간을 먼저 입력해 주세요.',
+      });
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const { content } = await apiJson('/api/preview', { ...settings(), event: toEvent(previewRow) });
+        if (!cancelled) setPreview((prev) => (prev?.id === id ? { id, content, error: '' } : prev));
+      } catch (e) {
+        if (!cancelled) setPreview((prev) => (prev?.id === id ? { id, content: '', error: e.message } : prev));
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey]);
 
   async function onDownload(list) {
     if (!guard()) return;
@@ -309,33 +337,53 @@ export default function App() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className={r.checked ? '' : 'off'}>
-                    <td>
-                      <input type="checkbox" checked={r.checked} onChange={(e) => updateRow(r.id, { checked: e.target.checked })} />
-                    </td>
-                    <td className="code">
-                      <b>{r.id}</b>
-                      <small>{r.language}</small>
-                    </td>
-                    <td>
-                      <textarea dir="auto" rows={2} value={r.summary} onChange={(e) => updateRow(r.id, { summary: e.target.value })} />
-                    </td>
-                    <td>
-                      <textarea
-                        dir="auto"
-                        rows={3}
-                        value={r.description}
-                        onChange={(e) => updateRow(r.id, { description: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input dir="ltr" value={r.url} onChange={(e) => updateRow(r.id, { url: e.target.value })} />
-                    </td>
-                    <td className="actions">
-                      <button onClick={() => onPreview(r)}>미리보기</button>
-                      <button onClick={() => onDownload([r])}>.ics</button>
-                    </td>
-                  </tr>
+                  <Fragment key={r.id}>
+                    <tr className={`${r.checked ? '' : 'off'} ${preview?.id === r.id ? 'previewing' : ''}`}>
+                      <td>
+                        <input type="checkbox" checked={r.checked} onChange={(e) => updateRow(r.id, { checked: e.target.checked })} />
+                      </td>
+                      <td className="code">
+                        <b>{r.id}</b>
+                        <small>{r.language}</small>
+                      </td>
+                      <td>
+                        <textarea dir="auto" rows={2} value={r.summary} onChange={(e) => updateRow(r.id, { summary: e.target.value })} />
+                      </td>
+                      <td>
+                        <textarea
+                          dir="auto"
+                          rows={3}
+                          value={r.description}
+                          onChange={(e) => updateRow(r.id, { description: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input dir="ltr" value={r.url} onChange={(e) => updateRow(r.id, { url: e.target.value })} />
+                      </td>
+                      <td className="actions">
+                        <button className={preview?.id === r.id ? 'active' : ''} onClick={() => onPreview(r)}>
+                          {preview?.id === r.id ? '미리보기 닫기' : '미리보기'}
+                        </button>
+                        <button onClick={() => onDownload([r])}>.ics</button>
+                      </td>
+                    </tr>
+                    {preview?.id === r.id && (
+                      <tr className="preview-row">
+                        <td colSpan={6}>
+                          <div className="preview-head">
+                            <b>미리보기 · {r.id}</b>
+                            <span className="muted">내용을 수정하면 자동으로 반영됩니다</span>
+                            <button onClick={() => setPreview(null)}>닫기</button>
+                          </div>
+                          {preview.error ? (
+                            <div className="error">{preview.error}</div>
+                          ) : (
+                            <pre dir="ltr">{preview.content || '생성 중…'}</pre>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -343,15 +391,6 @@ export default function App() {
         </section>
       )}
 
-      {preview && (
-        <section className="card">
-          <div className="row-head">
-            <h2>미리보기 · {preview.id}</h2>
-            <button onClick={() => setPreview(null)}>닫기</button>
-          </div>
-          <pre dir="auto">{preview.content}</pre>
-        </section>
-      )}
     </div>
   );
 }

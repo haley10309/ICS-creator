@@ -59,3 +59,10 @@ pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; ov
 .dtstart-input input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; color: var(--accent); }
 input.invalid { border-color: var(--danger); background: #fef3f2; }
 .field-error { color: var(--danger); font-size: 12px; }
+tr.previewing td { background: var(--accent-soft); border-bottom: none; }
+tr.preview-row > td { background: var(--accent-soft); padding: 0 8px 12px; }
+tr.preview-row pre { margin: 0; max-height: 420px; overflow: auto; unicode-bidi: normal; text-align: left; }
+tr.preview-row .error { margin: 0; }
+.preview-head { display: flex; align-items: center; gap: 12px; padding: 4px 0 8px; }
+.preview-head .muted { font-size: 12px; flex: 1; }
+button.active { border-color: var(--accent); color: var(--accent); background: #fff; font-weight: 600; }

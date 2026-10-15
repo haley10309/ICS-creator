@@ -59,7 +59,8 @@ cd server && npm run build:exe    # → dist/ics-creator.exe (Windows)
   - 시작 시간은 자유 입력: `08:00`, `20:30`, `0830`, `8:00 PM`, `8pm`, `오후 8시 30분` 등
   - DTSTART 칸에 `20260827T120000Z`처럼 UTC 값을 직접 입력할 수도 있으며, 입력하면 날짜/시간 칸이 선택한 타임존 기준으로 자동 변경됩니다.
 - **알림(VALARM)**: N분 전 (기본 15분, `TRIGGER:-P0DT0H15M0S`), 끌 수 있음
-- 국가별 Summary/Description/URL은 화면에서 수정 가능, 국가별 미리보기 / 개별 `.ics` / 선택 항목 `.zip` 다운로드
+- 국가별 Summary/Description/URL은 화면에서 수정 가능, 개별 `.ics` / 선택 항목 `.zip` 다운로드
+- **미리보기**: 누른 국가 행 바로 아래에 ICS 내용이 펼쳐지며(다시 누르면 닫힘), 카피나 일정/알림 설정을 바꾸면 자동으로 갱신됩니다.
 
 ## 생성 규칙 (RFC 5545)
 - `BEGIN:VCALENDAR` / `VERSION:2.0` / `PRODID` / `VEVENT`(DTSTAMP, DTSTART, UID, SUMMARY …) / `END:VCALENDAR`
