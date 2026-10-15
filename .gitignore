@@ -1,0 +1,7 @@
+node_modules/
+server/public/
+server/build/
+dist/
+sample.xlsx
+*.log
+.DS_Store
