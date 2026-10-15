@@ -57,9 +57,9 @@ export default function App() {
 
   // DTSTART 설정
   const [date, setDate] = useState('');
-  const [timeText, setTimeText] = useState('08:00'); // 사용자가 입력한 그대로의 시간 문자열
+  const [timeText, setTimeText] = useState('12:00'); // 사용자가 입력한 그대로의 시간 문자열
   const [dtDraft, setDtDraft] = useState(null); // DTSTART 칸을 직접 편집 중일 때의 입력값
-  const [timeZone, setTimeZone] = useState('America/Toronto');
+  const [timeZone, setTimeZone] = useState('UTC');
   const [alarmOn, setAlarmOn] = useState(true);
   const [alarmMinutes, setAlarmMinutes] = useState(DEFAULT_ALARM);
   const [prefix, setPrefix] = useState('');
