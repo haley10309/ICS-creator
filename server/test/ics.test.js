@@ -42,7 +42,9 @@ test('buildIcs: 필수 구조, CRLF, 75바이트 접기', () => {
   assert.match(flat, /\r\nUID:c9ed119f-41cb-443c-b5d1-baa58fc61f7a\r\n/);
   assert.match(flat, /\r\nDESCRIPTION:Aug. 27\\, 2026 at 8:00 AM \\nLive on Samsung.com\r\n/);
   assert.match(flat, /\r\nURL:www.samsung.com\/ca\r\n/);
-  assert.match(flat, /BEGIN:VALARM\r\nACTION:DISPLAY\r\n.*\r\nTRIGGER:-P0DT0H15M0S\r\nEND:VALARM/);
+  // 이슈 예시와 동일한 알림 블록, DESCRIPTION은 이벤트 본문 1개만
+  assert.match(flat, /\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-P0DT0H15M0S\r\nEND:VALARM\r\n/);
+  assert.strictEqual(flat.match(/\r\nDESCRIPTION:/g).length, 1);
 });
 
 test('foldLine: 멀티바이트 문자를 자르지 않음', () => {

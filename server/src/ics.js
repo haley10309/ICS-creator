@@ -111,7 +111,6 @@ function buildIcs(opts) {
     lines.push(
       'BEGIN:VALARM',
       'ACTION:DISPLAY',
-      `DESCRIPTION:${escapeText(opts.summary)}`,
       `TRIGGER:${formatTrigger(Number(alarm))}`,
       'END:VALARM'
     );
