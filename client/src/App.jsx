@@ -1,5 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
-import { TIME_ZONES, zonedToUtc, formatIcsUtc, formatInZone } from './time.js';
+import {
+  TIME_ZONES,
+  zonedToUtc,
+  formatIcsUtc,
+  formatInZone,
+  parseTimeInput,
+  formatTimeText,
+  parseIcsUtc,
+  utcToZoned,
+} from './time.js';
 
 const DEFAULT_ALARM = 15;
 
@@ -48,7 +57,8 @@ export default function App() {
 
   // DTSTART 설정
   const [date, setDate] = useState('');
-  const [time, setTime] = useState('08:00');
+  const [timeText, setTimeText] = useState('08:00'); // 사용자가 입력한 그대로의 시간 문자열
+  const [dtDraft, setDtDraft] = useState(null); // DTSTART 칸을 직접 편집 중일 때의 입력값
   const [timeZone, setTimeZone] = useState('America/Toronto');
   const [alarmOn, setAlarmOn] = useState(true);
   const [alarmMinutes, setAlarmMinutes] = useState(DEFAULT_ALARM);
@@ -56,7 +66,20 @@ export default function App() {
 
   const [preview, setPreview] = useState(null);
 
+  const time = parseTimeInput(timeText);
+  const timeInvalid = timeText.trim() !== '' && !time;
   const dtstart = useMemo(() => zonedToUtc(date, time, timeZone), [date, time, timeZone]);
+  const dtDraftInvalid = dtDraft !== null && dtDraft.trim() !== '' && !parseIcsUtc(dtDraft);
+
+  /** DTSTART(UTC)를 직접 입력하면 날짜/시간 칸을 현재 타임존 기준으로 맞춘다 */
+  function onDtstartInput(value) {
+    setDtDraft(value);
+    const parsed = parseIcsUtc(value);
+    if (!parsed) return;
+    const z = utcToZoned(parsed, timeZone);
+    setDate(z.date);
+    setTimeText(formatTimeText(z.time));
+  }
   const selected = rows.filter((r) => r.checked);
 
   const settings = () => ({
@@ -96,7 +119,11 @@ export default function App() {
 
   function guard() {
     if (!dtstart) {
-      setError('DTSTART(시작 날짜/시간)를 설정해 주세요.');
+      setError(
+        timeInvalid
+          ? `시작 시간 "${timeText}"을(를) 이해할 수 없습니다. 예: 08:00, 20:30, 8:00 PM, 오후 8시`
+          : 'DTSTART(시작 날짜/시간)를 설정해 주세요.'
+      );
       return false;
     }
     setError('');
@@ -186,7 +213,16 @@ export default function App() {
           </label>
           <label>
             시작 시간
-            <input type="time" step="60" value={time} onChange={(e) => setTime(e.target.value)} />
+            <input
+              type="text"
+              inputMode="text"
+              placeholder="예: 08:00, 20:30, 8:00 PM"
+              className={timeInvalid ? 'invalid' : ''}
+              value={timeText}
+              onChange={(e) => setTimeText(e.target.value)}
+              onBlur={() => time && setTimeText(formatTimeText(time))}
+            />
+            {timeInvalid && <small className="field-error">시간 형식을 확인해 주세요</small>}
           </label>
           <label>
             기준 타임존
@@ -218,15 +254,27 @@ export default function App() {
           </label>
         </div>
         <div className="dtstart">
+          <label className="dtstart-input">
+            DTSTART (UTC, 직접 입력 가능)
+            <input
+              type="text"
+              spellCheck={false}
+              placeholder="예: 20260827T120000Z"
+              className={dtDraftInvalid ? 'invalid' : ''}
+              value={dtDraft ?? (dtstart ? formatIcsUtc(dtstart) : '')}
+              onFocus={() => setDtDraft(dtstart ? formatIcsUtc(dtstart) : '')}
+              onChange={(e) => onDtstartInput(e.target.value)}
+              onBlur={() => setDtDraft(null)}
+            />
+            {dtDraftInvalid && <small className="field-error">형식: YYYYMMDDTHHMMSSZ</small>}
+          </label>
           {dtstart ? (
-            <>
-              <code>DTSTART:{formatIcsUtc(dtstart)}</code>
-              <span>
-                = {formatInZone(dtstart, 'UTC')} UTC · {formatInZone(dtstart, 'Asia/Seoul')} KST
-              </span>
-            </>
+            <span>
+              = {formatInZone(dtstart, timeZone)} ({timeZone}) · {formatInZone(dtstart, 'UTC')} UTC ·{' '}
+              {formatInZone(dtstart, 'Asia/Seoul')} KST
+            </span>
           ) : (
-            <span className="muted">날짜와 시간을 입력하면 UTC 변환 결과가 표시됩니다.</span>
+            <span className="muted">날짜와 시간을 입력하거나, DTSTART를 직접 입력하세요.</span>
           )}
         </div>
       </section>

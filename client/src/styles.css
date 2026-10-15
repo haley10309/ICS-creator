@@ -55,3 +55,7 @@ td:nth-child(4) textarea { min-width: 280px; }
 td.actions { display: flex; flex-direction: column; gap: 6px; }
 tr.off { opacity: .45; }
 pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; unicode-bidi: plaintext; white-space: pre; }
+.dtstart-input { color: var(--accent); font-weight: 600; min-width: 240px; }
+.dtstart-input input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; color: var(--accent); }
+input.invalid { border-color: var(--danger); background: #fef3f2; }
+.field-error { color: var(--danger); font-size: 12px; }

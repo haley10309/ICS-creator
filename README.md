@@ -55,7 +55,9 @@ cd server && npm run build:exe    # → dist/ics-creator.exe (Windows)
   제외된 행 번호는 업로드 후 화면과 서버 콘솔에 표시됩니다.
 
 ## 화면에서 설정
-- **DTSTART**: 날짜 / 시간 / 기준 타임존 선택 → UTC(`YYYYMMDDTHHMMSSZ`)로 변환 (예: 2026-08-27 08:00 America/Toronto → `20260827T120000Z`)
+- **DTSTART**: 날짜 / 시작 시간 / 기준 타임존 → UTC(`YYYYMMDDTHHMMSSZ`)로 변환 (예: 2026-08-27 08:00 America/Toronto → `20260827T120000Z`)
+  - 시작 시간은 자유 입력: `08:00`, `20:30`, `0830`, `8:00 PM`, `8pm`, `오후 8시 30분` 등
+  - DTSTART 칸에 `20260827T120000Z`처럼 UTC 값을 직접 입력할 수도 있으며, 입력하면 날짜/시간 칸이 선택한 타임존 기준으로 자동 변경됩니다.
 - **알림(VALARM)**: N분 전 (기본 15분, `TRIGGER:-P0DT0H15M0S`), 끌 수 있음
 - 국가별 Summary/Description/URL은 화면에서 수정 가능, 국가별 미리보기 / 개별 `.ics` / 선택 항목 `.zip` 다운로드
 
